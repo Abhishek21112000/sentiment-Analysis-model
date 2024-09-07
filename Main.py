@@ -1,35 +1,39 @@
+
 import pandas as pd
-import re
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+import spacy
+import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report
 import streamlit as st
-import nltk
+import os
 
-#stopwords
-nltk.download('stopwords')
-nltk.download('punkt')
+#streramlit
+st.set_page_config(page_title='Sentiment Analysis Tool', layout='wide')
 
-stop_words = set(stopwords.words('english'))
+# Load SpaCy
+nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner', 'textcat'])
+
+# Cache
+stop_words = nlp.Defaults.stop_words
 
 @st.cache_data
 def load_data():
-    data = pd.read_csv('archive/IMDB Dataset.csv')
+    #need to make a csv file more stable so that the number of row and colums are same for each file 
+    """
+    file_1 = pd.read_csv('archive(IMDB)\IMDB Dataset.csv')
+    file_2 = pd.read_csv('archive(twitter)\witter_training.csv')
+    data = pd.concat([file_1, file_2])
+    """
+    data = pd.read_csv('archive(IMDB)\IMDB Dataset.csv')
     return data
 
-@st.cache_data
 def preprocess_text(text):
-    text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text)
-    words = word_tokenize(text)
-    words = [word for word in words if word not in stop_words]
-    return ' '.join(words)
+    doc = nlp(text.lower())  # Tokenize text
+    tokens = [token.text for token in doc if not token.is_stop and token.is_alpha]
+    return ' '.join(tokens)
 
-@st.cache_data
-def train_model(data):
+def train_and_save_model(data):
     data['clean_review'] = data['review'].apply(preprocess_text)
     vectorizer = TfidfVectorizer()
     X = vectorizer.fit_transform(data['clean_review'])
@@ -37,19 +41,49 @@ def train_model(data):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = MultinomialNB()
     model.fit(X_train, y_train)
+    
+    # Save model and vectorizer
+    with open('sentiment_model.pkl', 'wb') as model_file:
+        pickle.dump(model, model_file)
+    with open('vectorizer.pkl', 'wb') as vec_file:
+        pickle.dump(vectorizer, vec_file)
+
+def load_model_and_vectorizer():
+    with open('sentiment_model.pkl', 'rb') as model_file:
+        model = pickle.load(model_file)
+    with open('vectorizer.pkl', 'rb') as vec_file:
+        vectorizer = pickle.load(vec_file)
     return model, vectorizer
 
-# Load data
-data = load_data()
-model, vectorizer = train_model(data)
+# Check model
+if not os.path.exists('sentiment_model.pkl') or not os.path.exists('vectorizer.pkl'):
+    # train if not there
+    data = load_data()
+    train_and_save_model(data)
+
+# Load model and vectorizer
+model, vectorizer = load_model_and_vectorizer()
 
 # UI
 st.title('Sentiment Analysis Tool')
+st.markdown("### Analyze movie reviews and get sentiment predictions")
 
-user_input = st.text_area('Enter text for sentiment analysis')
+# Layout
+col1, col2 = st.columns([2, 1])
 
-if st.button('Analyze'):
-    processed_text = preprocess_text(user_input)
-    vectorized_text = vectorizer.transform([processed_text])
-    prediction = model.predict(vectorized_text)
-    st.write('Predicted Sentiment:', prediction[0])
+with col1:
+    user_input = st.text_area('Enter text for sentiment analysis', height=250)
+
+with col2:
+    if st.button('Analyze'):
+        if user_input:
+            processed_text = preprocess_text(user_input)
+            vectorized_text = vectorizer.transform([processed_text])
+            prediction = model.predict(vectorized_text)
+            st.write(f'**Predicted Sentiment:** {prediction[0]}')
+        else:
+            st.warning("Please enter some text for analysis.")
+
+
+
+
