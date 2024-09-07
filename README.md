@@ -88,10 +88,6 @@ The tool uses the IMDB movie review dataset for training the model. In the curre
 - Optimize model performance with more advanced techniques.
 - Add support for multi-class sentiment analysis.
 
-## License
-This project is licensed under the MIT License.
 
-## Contact
-For any questions or suggestions, feel free to reach out:
 
 
